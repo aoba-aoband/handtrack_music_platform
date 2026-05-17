@@ -6,6 +6,86 @@ is to keep hand tracking, neutral features, event mapping, and output adapters
 separate so SuperCollider, Ableton Live, Max for Live, or other systems can
 interpret the same control stream differently.
 
+## Prototype Status
+
+This is a prototype / practice build, not a finished application. It is meant
+to be playable enough for early rehearsal and feedback while the mapping,
+tracking, sound, and settings ideas are still evolving.
+
+The current UI is a temporary OpenCV trackbar panel. It is functional but not
+final. Root, scale, quantization, guide mode, and pitch range can be changed
+from the prototype panel without editing code or typing a long command every
+time.
+
+The main expected environment is currently Windows + Python + SuperCollider.
+
+## Setup
+
+Windows PowerShell setup:
+
+```powershell
+git clone https://github.com/aoba-aoband/handtrack_music_platform.git
+cd handtrack_music_platform
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+If PowerShell blocks virtual environment activation, allow locally created
+scripts for the current user and then activate the environment again:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+## SuperCollider Setup
+
+1. Start SuperCollider.
+2. Open `sc/basic_receiver.scd`.
+3. Evaluate the block in that file.
+4. The receiver listens for OSC on `127.0.0.1:57120`.
+5. That host and port should match the SuperCollider target in `config.py`.
+
+## Run Prototype
+
+Main practice prototype command:
+
+```powershell
+python main.py hands --sample-mapping --send-osc --show-pitch-guides --show-settings-panel
+```
+
+Start with pitch quantization enabled:
+
+```powershell
+python main.py hands --sample-mapping --send-osc --show-pitch-guides --show-settings-panel --quantize-pitch
+```
+
+## Basic Operation
+
+- Press `q` in the preview window to quit.
+- Move the right hand up and down to control the pitch candidate.
+- Move the middle finger above the index finger to trigger the sample octave
+  shift candidate.
+- Use left-hand pinch for the amp candidate.
+- Use the settings panel to change:
+  - Pitch Min note
+  - Pitch Max note
+  - Root
+  - Scale
+  - Quantize
+  - Guide Mode
+
+## Known Prototype Limitations
+
+- The UI is an OpenCV trackbar panel, so it is visually temporary.
+- Root and Scale are numeric trackbars, not an intuitive final UI.
+- MediaPipe handedness and hand index are not yet a complete stable role
+  tracking system.
+- Tracking dropout can still make the sound jump unnaturally.
+- The SuperCollider sound, `Lag`, and amp behavior are still probe-level
+  designs.
+- Ableton / Max for Live integration is not yet fully implemented.
+
 ## Current Status
 
 - Git tracking is initialized.
