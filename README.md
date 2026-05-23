@@ -115,6 +115,9 @@ python main.py hands --sample-mapping --send-osc --show-pitch-guides --show-sett
 - The SuperCollider probe uses `/sample/right/pitch/final_freq` directly for
   the confirmation Synth's pitch, so `--quantize-pitch` can switch the audible
   probe between continuous and scale-snapped pitch.
+- The SuperCollider probe now includes a small synth control UI for response
+  and tone-shaping parameters such as lag, portamento, soft clipping, output
+  level, and the left-hand pinch amp range.
 - A minimal sample pitch guide-line overlay is available in the camera preview.
   It supports `simple`, `chromatic`, and `scale` display modes from the same
   Python pitch range settings used by the sample mapper.
@@ -250,6 +253,23 @@ inspection. `/sample/right/pitch/octave_shift`,
 SuperCollider does not calculate octave shifts, scale, key, or quantization;
 it uses the final frequency candidate sent by Python.
 
+`sc/basic_receiver.scd` also opens a prototype synth control UI. It is still a
+probe interface, not a finished instrument panel, but it lets the
+SuperCollider side adjust how the received `final_freq` is followed and
+sounded. Current controls include:
+
+- `freqLag`
+- `ampLag`
+- `portamentoOn` / `portamentoTime`
+- `softClipOn` / `softClipDrive` / `softClipMix`
+- `outputLevel`
+- `ampMin` / `ampMax`
+
+The design boundary stays the same: Python decides pitch, scale,
+quantization, octave candidates, and `final_freq`. SuperCollider receives that
+`final_freq` and handles response feel, portamento, soft clipping, output
+level, and the local amp range used for the sample probe.
+
 This sample uses MediaPipe `handedness`, but it is still an example patch, not
 a platform rule. The sample mapping debounces handedness labels for a few
 frames so a single-frame Left/Right misclassification is less likely to swap
@@ -268,21 +288,25 @@ When debugging two-hand behavior, either add matching Post display handlers for
 
 ### Smoothing and Portamento Notes
 
-The current `basicOscProbe` Synth in `sc/basic_receiver.scd` applies
-`Lag.kr(..., 0.08)` to both `freq` and `amp`. This is a temporary connection
-probe value, not a fixed instrument specification. Depending on the piece,
-ensemble context, and playing style, the best feel may be fast tracking,
-deliberately delayed smooth motion, or something in between.
+The current `basicOscProbe` Synth in `sc/basic_receiver.scd` exposes
+`freqLag`, `ampLag`, `portamentoOn`, and `portamentoTime` in the
+SuperCollider probe UI. The defaults are still temporary connection-probe
+values, not a fixed instrument specification. Depending on the piece, ensemble
+context, and playing style, the best feel may be fast tracking, deliberately
+delayed smooth motion, or something in between.
 
 It is useful to separate two related ideas:
 
 - Smoothing reduces MediaPipe-derived jitter and tiny control-value wobble.
 - Portamento defines the musical movement between pitch targets.
 
-The current `Lag.kr` value does a little of both. That is fine for a probe, but
-a playable instrument should expose these choices as adjustable parameters.
-Future control surfaces could include a UI panel, OpenCV overlay controls, MIDI
-CC, OSC settings messages, config values, or CLI startup options.
+The current probe separates the basic controls: `freqLag` is used when
+portamento is off, `portamentoTime` is used when portamento is on, and
+`ampLag` follows amplitude independently. This is still a probe-level design,
+but the values are now adjustable from SuperCollider instead of being only
+hard-coded in the SynthDef. Future control surfaces could also include an
+OpenCV overlay, MIDI CC, OSC settings messages, config values, or CLI startup
+options.
 
 Future settings candidates:
 
