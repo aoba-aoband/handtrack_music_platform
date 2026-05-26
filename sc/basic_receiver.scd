@@ -25,6 +25,9 @@ s.waitForBoot({
         softClipDrive: 2.0,
         softClipMix: 1.0,
         outputLevel: 0.7,
+        performanceGate: 0,
+        crescendoTime: 1.5,
+        decrescendoTime: 1.5,
         ampMin: 0.02,
         ampMax: 0.25
     );
@@ -37,17 +40,21 @@ s.waitForBoot({
         \softClipOn,
         \softClipDrive,
         \softClipMix,
-        \outputLevel
+        \outputLevel,
+        \performanceGate,
+        \crescendoTime,
+        \decrescendoTime
     ];
 
     SynthDef(\basicOscProbe, { |out = 0, freq = 440, amp = 0.05,
         freqLag = 0.08, ampLag = 0.08,
         portamentoOn = 0, portamentoTime = 0.15,
         softClipOn = 0, softClipDrive = 2.0, softClipMix = 1.0,
-        outputLevel = 0.7|
+        outputLevel = 0.7,
+        performanceGate = 0, crescendoTime = 1.5, decrescendoTime = 1.5|
 
         var freqFollowTime, followedFreq, followedAmp;
-        var dry, clipped, shaped, sig;
+        var performanceEnv, dry, clipped, shaped, sig;
 
         freqFollowTime = Select.kr(
             portamentoOn.clip(0, 1),
@@ -55,6 +62,11 @@ s.waitForBoot({
         );
         followedFreq = Lag.kr(freq.max(20), freqFollowTime);
         followedAmp = Lag.kr(amp.max(0), ampLag.max(0));
+        performanceEnv = LagUD.kr(
+            performanceGate.clip(0, 1),
+            crescendoTime.max(0),
+            decrescendoTime.max(0)
+        );
 
         dry = SinOsc.ar(followedFreq) * followedAmp;
         clipped = (dry * softClipDrive.max(1)).tanh;
@@ -62,7 +74,7 @@ s.waitForBoot({
             softClipOn.clip(0, 1) * softClipMix.clip(0, 1),
             [dry, clipped]
         );
-        sig = shaped * outputLevel.clip(0, 1);
+        sig = shaped * outputLevel.clip(0, 1) * performanceEnv;
         Out.ar(out, sig ! 2);
     }).add;
 
@@ -80,7 +92,10 @@ s.waitForBoot({
         \softClipOn, ~probeParams[\softClipOn],
         \softClipDrive, ~probeParams[\softClipDrive],
         \softClipMix, ~probeParams[\softClipMix],
-        \outputLevel, ~probeParams[\outputLevel]
+        \outputLevel, ~probeParams[\outputLevel],
+        \performanceGate, ~probeParams[\performanceGate],
+        \crescendoTime, ~probeParams[\crescendoTime],
+        \decrescendoTime, ~probeParams[\decrescendoTime]
     ]);
 
     ~setProbeParam = { |key, value|
@@ -98,12 +113,29 @@ s.waitForBoot({
         });
     };
 
+    ~setPerformanceGate = { |value|
+        var gate;
+        gate = value.clip(0, 1).asInteger;
+        ~setProbeParam.(\performanceGate, gate);
+        ~probeControls.notNil.if({
+            ~probeControls[\performanceGate].notNil.if({
+                ~probeControls[\performanceGate].value_(gate);
+            });
+        });
+    };
+
+    ~togglePerformanceGate = {
+        var current;
+        current = (~probeParams[\performanceGate] ? 0).asInteger;
+        ~setPerformanceGate.((1 - current).asInteger);
+    };
+
     {
         ~probeWindow.notNil.if({
             ~probeWindow.close;
         });
 
-        ~probeWindow = Window("Probe Synth Controls", Rect(100, 100, 420, 430));
+        ~probeWindow = Window("Probe Synth Controls", Rect(100, 100, 420, 520));
         ~probeControls = ();
 
         ~makeProbeSlider = { |label, key, minValue, maxValue, step = 0|
@@ -133,8 +165,31 @@ s.waitForBoot({
             button;
         };
 
+        ~makePerformanceGateButton = {
+            var button;
+            button = Button()
+                .states_([
+                    ["Gate: OFF (space)", Color.black, Color.gray(0.85)],
+                    ["Gate: ON (space)", Color.white, Color(0.2, 0.6, 0.25)]
+                ])
+                .value_(~probeParams[\performanceGate].asInteger)
+                .action_({ ~togglePerformanceGate.(); });
+            ~probeControls[\performanceGate] = button;
+            button;
+        };
+
+        ~probeWindow.view.keyDownAction_({ |view, char, modifiers, unicode, keycode|
+            ((unicode == 32) or: { keycode == 32 }).if({
+                ~togglePerformanceGate.();
+            });
+        });
+
         ~probeWindow.layout = VLayout(
             StaticText().string_("Sample mapping probe synth controls"),
+            StaticText().string_("Performance Gate starts OFF. Reset defaults returns it to OFF."),
+            ~makePerformanceGateButton.(),
+            ~makeProbeSlider.("crescendoTime", \crescendoTime, 0.0, 8.0, 0.001),
+            ~makeProbeSlider.("decrescendoTime", \decrescendoTime, 0.0, 8.0, 0.001),
             ~makeProbeSlider.("freqLag", \freqLag, 0.0, 0.3, 0.001),
             ~makeProbeSlider.("ampLag", \ampLag, 0.0, 0.3, 0.001),
             ~makeProbeToggle.("portamento", \portamentoOn),
@@ -150,7 +205,11 @@ s.waitForBoot({
                 .action_({
                     ~resetProbeParams.();
                     ~probeControls.keysValuesDo({ |key, control|
-                        control.valueAction_(~probeParams[key]);
+                        (key == \performanceGate).if({
+                            control.value_(~probeParams[key].asInteger);
+                        }, {
+                            control.valueAction_(~probeParams[key]);
+                        });
                     });
                 })
         );

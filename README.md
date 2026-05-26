@@ -118,6 +118,9 @@ python main.py hands --sample-mapping --send-osc --show-pitch-guides --show-sett
 - The SuperCollider probe now includes a small synth control UI for response
   and tone-shaping parameters such as lag, portamento, soft clipping, output
   level, and the left-hand pinch amp range.
+- The SuperCollider probe also has a performance gate. With the Probe Synth
+  Controls window focused, pressing the spacebar toggles a crescendo /
+  decrescendo-style master gate.
 - A minimal sample pitch guide-line overlay is available in the camera preview.
   It supports `simple`, `chromatic`, and `scale` display modes from the same
   Python pitch range settings used by the sample mapper.
@@ -260,6 +263,9 @@ sounded. Current controls include:
 
 - `freqLag`
 - `ampLag`
+- Performance Gate, also toggleable with the spacebar when the Probe Synth
+  Controls window has focus.
+- `crescendoTime` / `decrescendoTime`
 - `portamentoOn` / `portamentoTime`
 - `softClipOn` / `softClipDrive` / `softClipMix`
 - `outputLevel`
@@ -268,7 +274,11 @@ sounded. Current controls include:
 The design boundary stays the same: Python decides pitch, scale,
 quantization, octave candidates, and `final_freq`. SuperCollider receives that
 `final_freq` and handles response feel, portamento, soft clipping, output
-level, and the local amp range used for the sample probe.
+level, performance gating, and the local amp range used for the sample probe.
+The gate starts off by default so the probe can be brought in intentionally;
+the Gate button and spacebar perform the same toggle. `crescendoTime` and
+`decrescendoTime` control the fade-in and fade-out time. This is a probe synth
+performance helper, not a finished instrument specification.
 
 This sample uses MediaPipe `handedness`, but it is still an example patch, not
 a platform rule. The sample mapping debounces handedness labels for a few
