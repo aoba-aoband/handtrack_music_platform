@@ -15,6 +15,7 @@ Coordinate notes:
 s.waitForBoot({
     ~debugHandEvents = false;
     ~debugSampleEvents = false;
+    ~debugProbeMonitor = false;
 
     ~probeDefaults = (
         freqLag: 0.08,
@@ -24,10 +25,17 @@ s.waitForBoot({
         softClipOn: 0,
         softClipDrive: 2.0,
         softClipMix: 1.0,
+        filterOn: 0,
+        filterCutoff: 5000,
+        filterRq: 0.5,
+        filterMix: 1.0,
+        filterLag: 0.05,
         outputLevel: 0.7,
         performanceGate: 0,
         crescendoTime: 1.5,
         decrescendoTime: 1.5,
+        monitorOn: 1,
+        monitorRate: 10,
         ampMin: 0.02,
         ampMax: 0.25
     );
@@ -40,21 +48,41 @@ s.waitForBoot({
         \softClipOn,
         \softClipDrive,
         \softClipMix,
+        \filterOn,
+        \filterCutoff,
+        \filterRq,
+        \filterMix,
+        \filterLag,
         \outputLevel,
         \performanceGate,
         \crescendoTime,
-        \decrescendoTime
+        \decrescendoTime,
+        \monitorOn,
+        \monitorRate
     ];
+
+    ~probeMonitor = (
+        targetFreq: 440.0,
+        targetAmp: 0.05,
+        followedFreq: 440.0,
+        followedAmp: 0.05,
+        performanceEnv: 0.0,
+        filterFreq: 5000.0
+    );
 
     SynthDef(\basicOscProbe, { |out = 0, freq = 440, amp = 0.05,
         freqLag = 0.08, ampLag = 0.08,
         portamentoOn = 0, portamentoTime = 0.15,
         softClipOn = 0, softClipDrive = 2.0, softClipMix = 1.0,
+        filterOn = 0, filterCutoff = 5000, filterRq = 0.5,
+        filterMix = 1.0, filterLag = 0.05,
         outputLevel = 0.7,
-        performanceGate = 0, crescendoTime = 1.5, decrescendoTime = 1.5|
+        performanceGate = 0, crescendoTime = 1.5, decrescendoTime = 1.5,
+        monitorOn = 1, monitorRate = 10|
 
         var freqFollowTime, followedFreq, followedAmp;
-        var performanceEnv, dry, clipped, shaped, sig;
+        var performanceEnv, dry, clipped, shaped;
+        var filterFreq, filtered, filteredMix, sig, monitorTrig;
 
         freqFollowTime = Select.kr(
             portamentoOn.clip(0, 1),
@@ -74,7 +102,19 @@ s.waitForBoot({
             softClipOn.clip(0, 1) * softClipMix.clip(0, 1),
             [dry, clipped]
         );
-        sig = shaped * outputLevel.clip(0, 1) * performanceEnv;
+        filterFreq = Lag.kr(filterCutoff.clip(40, 18000), filterLag.max(0));
+        filtered = RLPF.ar(shaped, filterFreq, filterRq.clip(0.05, 1.0));
+        filteredMix = SelectX.ar(
+            filterOn.clip(0, 1) * filterMix.clip(0, 1),
+            [shaped, filtered]
+        );
+        sig = filteredMix * outputLevel.clip(0, 1) * performanceEnv;
+        monitorTrig = Impulse.kr(monitorRate.clip(0.1, 30)) * monitorOn.clip(0, 1);
+        SendReply.kr(
+            monitorTrig,
+            '/basicOscProbe/monitor',
+            [followedFreq, followedAmp, performanceEnv, filterFreq]
+        );
         Out.ar(out, sig ! 2);
     }).add;
 
@@ -92,11 +132,90 @@ s.waitForBoot({
         \softClipOn, ~probeParams[\softClipOn],
         \softClipDrive, ~probeParams[\softClipDrive],
         \softClipMix, ~probeParams[\softClipMix],
+        \filterOn, ~probeParams[\filterOn],
+        \filterCutoff, ~probeParams[\filterCutoff],
+        \filterRq, ~probeParams[\filterRq],
+        \filterMix, ~probeParams[\filterMix],
+        \filterLag, ~probeParams[\filterLag],
         \outputLevel, ~probeParams[\outputLevel],
         \performanceGate, ~probeParams[\performanceGate],
         \crescendoTime, ~probeParams[\crescendoTime],
-        \decrescendoTime, ~probeParams[\decrescendoTime]
+        \decrescendoTime, ~probeParams[\decrescendoTime],
+        \monitorOn, ~probeParams[\monitorOn],
+        \monitorRate, ~probeParams[\monitorRate]
     ]);
+
+    ~fmtProbeNumber = { |value, step = 0.001|
+        (value ? 0).asFloat.round(step).asString;
+    };
+
+    ~fmtProbeHz = { |value|
+        ~fmtProbeNumber.(value, 0.1) ++ " Hz";
+    };
+
+    ~fmtProbeOnOff = { |value|
+        ((value ? 0).asFloat >= 0.5).if({ "ON" }, { "OFF" });
+    };
+
+    ~refreshProbeMonitor = {
+        var labels;
+        labels = ~probeMonitorLabels;
+        labels.notNil.if({
+            labels[\freq].notNil.if({
+                labels[\freq].string_(
+                    "targetFreq: " ++ ~fmtProbeHz.(~probeMonitor[\targetFreq])
+                    ++ "    followedFreq: " ++ ~fmtProbeHz.(~probeMonitor[\followedFreq])
+                );
+            });
+            labels[\amp].notNil.if({
+                labels[\amp].string_(
+                    "targetAmp: " ++ ~fmtProbeNumber.(~probeMonitor[\targetAmp], 0.001)
+                    ++ "    followedAmp: " ++ ~fmtProbeNumber.(~probeMonitor[\followedAmp], 0.001)
+                );
+            });
+            labels[\gate].notNil.if({
+                labels[\gate].string_(
+                    "Gate: " ++ ~fmtProbeOnOff.(~probeParams[\performanceGate])
+                    ++ "    env " ++ ~fmtProbeNumber.(~probeMonitor[\performanceEnv], 0.01)
+                );
+            });
+            labels[\level].notNil.if({
+                labels[\level].string_(
+                    "outputLevel: " ++ ~fmtProbeNumber.(~probeParams[\outputLevel], 0.001)
+                    ++ "    ampRange: "
+                    ++ ~fmtProbeNumber.(~probeParams[\ampMin], 0.001)
+                    ++ " - " ++ ~fmtProbeNumber.(~probeParams[\ampMax], 0.001)
+                );
+            });
+            labels[\softClip].notNil.if({
+                labels[\softClip].string_(
+                    "SoftClip: " ++ ~fmtProbeOnOff.(~probeParams[\softClipOn])
+                    ++ "    drive " ++ ~fmtProbeNumber.(~probeParams[\softClipDrive], 0.01)
+                    ++ "    mix " ++ ~fmtProbeNumber.(~probeParams[\softClipMix], 0.001)
+                );
+            });
+            labels[\filter].notNil.if({
+                labels[\filter].string_(
+                    "Filter: " ++ ~fmtProbeOnOff.(~probeParams[\filterOn])
+                    ++ "    cutoff " ++ ~fmtProbeHz.(~probeParams[\filterCutoff])
+                    ++ "    rq " ++ ~fmtProbeNumber.(~probeParams[\filterRq], 0.01)
+                    ++ "    mix " ++ ~fmtProbeNumber.(~probeParams[\filterMix], 0.001)
+                );
+            });
+            labels[\filterFreq].notNil.if({
+                labels[\filterFreq].string_(
+                    "filterFreq: " ++ ~fmtProbeHz.(~probeMonitor[\filterFreq])
+                    ++ "    filterLag " ++ ~fmtProbeNumber.(~probeParams[\filterLag], 0.001)
+                );
+            });
+        });
+    };
+
+    ~updateProbeMonitor = {
+        {
+            ~refreshProbeMonitor.();
+        }.defer;
+    };
 
     ~setProbeParam = { |key, value|
         ~probeParams[key] = value;
@@ -105,6 +224,7 @@ s.waitForBoot({
         }).if({
             ~basicReceiverSynth.set(key, value);
         });
+        ~updateProbeMonitor.();
     };
 
     ~resetProbeParams = {
@@ -130,12 +250,36 @@ s.waitForBoot({
         ~setPerformanceGate.((1 - current).asInteger);
     };
 
+    ~openProbeScope = {
+        {
+            try {
+                s.scope(2);
+            } { |error|
+                ("Open Scope failed: " ++ error.asString).postln;
+            };
+        }.defer;
+    };
+
+    ~openProbeFreqScope = {
+        {
+            try {
+                ~probeFreqScope = FreqScope.new;
+            } { |error|
+                ("Open FreqScope failed: " ++ error.asString).postln;
+            };
+        }.defer;
+    };
+
     {
         ~probeWindow.notNil.if({
             ~probeWindow.close;
         });
+        ~probeMonitorWindow.notNil.if({
+            ~probeMonitorWindow.close;
+        });
+        ~probeMonitorLabels = nil;
 
-        ~probeWindow = Window("Probe Synth Controls", Rect(100, 100, 420, 520));
+        ~probeWindow = Window("Probe Synth Controls", Rect(100, 100, 420, 650));
         ~probeControls = ();
 
         ~makeProbeSlider = { |label, key, minValue, maxValue, step = 0|
@@ -197,6 +341,11 @@ s.waitForBoot({
             ~makeProbeToggle.("softClip", \softClipOn),
             ~makeProbeSlider.("softClipDrive", \softClipDrive, 1.0, 20.0, 0.01),
             ~makeProbeSlider.("softClipMix", \softClipMix, 0.0, 1.0, 0.001),
+            ~makeProbeToggle.("filter", \filterOn),
+            ~makeProbeSlider.("filterCutoff", \filterCutoff, 80.0, 12000.0, 1.0),
+            ~makeProbeSlider.("filterRq", \filterRq, 0.05, 1.0, 0.001),
+            ~makeProbeSlider.("filterMix", \filterMix, 0.0, 1.0, 0.001),
+            ~makeProbeSlider.("filterLag", \filterLag, 0.0, 0.3, 0.001),
             ~makeProbeSlider.("outputLevel", \outputLevel, 0.0, 1.0, 0.001),
             ~makeProbeSlider.("ampMin", \ampMin, 0.0, 0.2, 0.001),
             ~makeProbeSlider.("ampMax", \ampMax, 0.01, 0.8, 0.001),
@@ -214,7 +363,62 @@ s.waitForBoot({
                 })
         );
         ~probeWindow.front;
+
+        ~probeMonitorWindow = Window("Probe Synth Monitor", Rect(540, 100, 420, 260));
+        ~probeMonitorLabels = ();
+
+        ~makeProbeMonitorLabel = { |key|
+            var label;
+            label = StaticText().string_("");
+            ~probeMonitorLabels[key] = label;
+            label;
+        };
+
+        ~probeMonitorWindow.layout = VLayout(
+            StaticText().string_("Probe synth sound monitor"),
+            HLayout(
+                Button()
+                    .states_([["Open Scope", Color.black, Color.gray(0.85)]])
+                    .action_({ ~openProbeScope.(); }),
+                Button()
+                    .states_([["Open FreqScope", Color.black, Color.gray(0.85)]])
+                    .action_({ ~openProbeFreqScope.(); })
+            ),
+            ~makeProbeMonitorLabel.(\freq),
+            ~makeProbeMonitorLabel.(\amp),
+            ~makeProbeMonitorLabel.(\gate),
+            ~makeProbeMonitorLabel.(\level),
+            ~makeProbeMonitorLabel.(\softClip),
+            ~makeProbeMonitorLabel.(\filter),
+            ~makeProbeMonitorLabel.(\filterFreq)
+        );
+        ~refreshProbeMonitor.();
+        ~probeMonitorWindow.front;
     }.defer;
+
+    OSCdef(\basicOscProbeMonitor, { |msg, time, addr, recvPort|
+        var nodeID;
+        ~debugProbeMonitor.if({
+            msg.postln;
+        });
+        // SendReply arrives as [address, nodeID, replyID, followedFreq, followedAmp, env, filterFreq].
+        (msg.size >= 7).if({
+            nodeID = msg[1].asInteger;
+            ((~basicReceiverSynth.isNil) or: {
+                nodeID == ~basicReceiverSynth.nodeID
+            }).if({
+                ~probeMonitor[\followedFreq] = msg[3].asFloat;
+                ~probeMonitor[\followedAmp] = msg[4].asFloat;
+                ~probeMonitor[\performanceEnv] = msg[5].asFloat;
+                ~probeMonitor[\filterFreq] = msg[6].asFloat;
+                ~updateProbeMonitor.();
+            });
+        }, {
+            ~debugProbeMonitor.if({
+                ["unexpected probe monitor msg", msg].postln;
+            });
+        });
+    }, "/basicOscProbe/monitor");
 
     ~postControlEvent = { |msg, addr|
         var value;
@@ -299,7 +503,11 @@ s.waitForBoot({
     OSCdef(\sampleRightPitchFinalFreq, { |msg, time, addr, recvPort|
         var freq;
         freq = msg[1].asFloat.max(0);
-        ~basicReceiverSynth.set(\freq, freq);
+        ~probeMonitor[\targetFreq] = freq;
+        ~basicReceiverSynth.notNil.if({
+            ~basicReceiverSynth.set(\freq, freq);
+        });
+        ~updateProbeMonitor.();
         ~debugSampleEvents.if({
             ["sample pitch final freq", freq].postln;
         });
@@ -314,7 +522,11 @@ s.waitForBoot({
         ampMin = ~probeParams[\ampMin].min(~probeParams[\ampMax]);
         ampMax = ~probeParams[\ampMin].max(~probeParams[\ampMax]);
         amp = value.linlin(0, 1, ampMin, ampMax);
-        ~basicReceiverSynth.set(\amp, amp);
+        ~probeMonitor[\targetAmp] = amp;
+        ~basicReceiverSynth.notNil.if({
+            ~basicReceiverSynth.set(\amp, amp);
+        });
+        ~updateProbeMonitor.();
         ~debugSampleEvents.if({
             ["sample amp", value, amp].postln;
         });
@@ -323,6 +535,7 @@ s.waitForBoot({
     "Listening for generic hand control events on port 57120".postln;
     "Listening for sample mapping events that control the probe synth.".postln;
     "Probe synth controls are available in the SuperCollider UI window.".postln;
+    "Probe synth monitor is available with Scope and FreqScope buttons.".postln;
     "Set ~debugHandEvents or ~debugSampleEvents to true for per-event logs.".postln;
 });
 )

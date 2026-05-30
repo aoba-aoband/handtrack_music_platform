@@ -6,6 +6,8 @@ is to keep hand tracking, neutral features, event mapping, and output adapters
 separate so SuperCollider, Ableton Live, Max for Live, or other systems can
 interpret the same control stream differently.
 
+Japanese quick start: [README_ja.md](README_ja.md)
+
 ## Prototype Status
 
 This is a prototype / practice build, not a finished application. It is meant
@@ -117,10 +119,13 @@ python main.py hands --sample-mapping --send-osc --show-pitch-guides --show-sett
   probe between continuous and scale-snapped pitch.
 - The SuperCollider probe now includes a small synth control UI for response
   and tone-shaping parameters such as lag, portamento, soft clipping, output
-  level, and the left-hand pinch amp range.
+  level, filter shaping, and the left-hand pinch amp range.
 - The SuperCollider probe also has a performance gate. With the Probe Synth
   Controls window focused, pressing the spacebar toggles a crescendo /
   decrescendo-style master gate.
+- The SuperCollider probe opens a small sound-design monitor panel. It shows
+  target/followed frequency, target/followed amp, gate envelope, output level,
+  softClip, and filter state, with buttons for waveform and frequency scopes.
 - A minimal sample pitch guide-line overlay is available in the camera preview.
   It supports `simple`, `chromatic`, and `scale` display modes from the same
   Python pitch range settings used by the sample mapper.
@@ -268,17 +273,42 @@ sounded. Current controls include:
 - `crescendoTime` / `decrescendoTime`
 - `portamentoOn` / `portamentoTime`
 - `softClipOn` / `softClipDrive` / `softClipMix`
+- `filterOn` / `filterCutoff` / `filterRq` / `filterMix` / `filterLag`
 - `outputLevel`
 - `ampMin` / `ampMax`
 
+A separate `Probe Synth Monitor` window is also opened as a sound-design aid,
+not a finished UI. It shows `targetFreq`, `followedFreq`, `targetAmp`,
+`followedAmp`, the performance gate and gate envelope, `outputLevel`, current
+soft clipping values, current filter values, and the lagged `filterFreq` used
+inside the Synth.
+
+The monitor includes `Open Scope`, which calls `s.scope(2)` for the final
+2-channel output waveform, and `Open FreqScope`, which opens SuperCollider's
+standard frequency display. These are meant to make soft clipping and filter
+changes easier to judge while shaping the probe synth.
+
 The design boundary stays the same: Python decides pitch, scale,
 quantization, octave candidates, and `final_freq`. SuperCollider receives that
-`final_freq` and handles response feel, portamento, soft clipping, output
-level, performance gating, and the local amp range used for the sample probe.
+`final_freq` and handles response feel, portamento, soft clipping, filter
+shaping, output level, performance gating, and the local amp range used for
+the sample probe.
 The gate starts off by default so the probe can be brought in intentionally;
 the Gate button and spacebar perform the same toggle. `crescendoTime` and
 `decrescendoTime` control the fade-in and fade-out time. This is a probe synth
 performance helper, not a finished instrument specification.
+
+The filter section is placed after soft clipping and before `outputLevel` and
+the performance gate:
+
+```text
+SinOsc -> ampLag -> soft clipping -> filter -> outputLevel -> performanceGate -> Out
+```
+
+The current filter uses `RLPF.ar` to tame high-frequency content created by
+soft clipping. `filterCutoff`, `filterRq`, `filterMix`, and `filterLag` are
+adjustable from the SuperCollider UI. This is a probe synth tone-shaping tool,
+not a finished sound design.
 
 This sample uses MediaPipe `handedness`, but it is still an example patch, not
 a platform rule. The sample mapping debounces handedness labels for a few
