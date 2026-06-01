@@ -128,6 +128,8 @@ python main.py hands --sample-mapping --send-osc --show-pitch-guides --show-sett
   softClip, and filter state, with buttons for waveform and frequency scopes.
 - The SuperCollider probe also opens a conceptual visualizer for sound design:
   LPF/filter shape, soft clip curve, and pitch-follow / portamento history.
+- The SuperCollider probe now includes organ-style additive synthesis, a
+  filtered delay, and a reverb stage for tone-design experiments.
 - A minimal sample pitch guide-line overlay is available in the camera preview.
   It supports `simple`, `chromatic`, and `scale` display modes from the same
   Python pitch range settings used by the sample mapper.
@@ -292,12 +294,34 @@ changes easier to judge while shaping the probe synth.
 
 A separate `Probe Synth Visualizer` window shows three conceptual diagrams for
 sound design. The LPF visual places `filterCutoff` on a log-like frequency
-axis and shows how `filterRq` and `filterMix` affect the rough filter shape.
-The Soft Clip visual shows the dry line and the `tanh`-style curve created by
-`softClipDrive` and blended by `softClipMix`. The Pitch Follow visual keeps a
-short history of `targetFreq` and `followedFreq` so lag and portamento delay
-can be seen while playing. These drawings are intentionally approximate
-concept diagrams, not accurate measurement instruments.
+axis and now uses an RLPF-like approximation instead of the older hard-cut
+concept curve. It is still not a measured spectrum analyzer or an exact copy
+of SuperCollider's internal `RLPF.ar`, but it better shows that low
+`filterRq` values can become sharper and more resonant around the cutoff.
+The LPF / Filter visual uses a dB scale from `+12 dB` to `-36 dB`, with a
+clear `0 dB` reference line and dB tick marks, so resonance peaks and
+high-frequency rolloff are easier to read without flattening the curve at the
+top of the display.
+For simple high-frequency smoothing, mid-to-high `filterRq` values such as
+`0.5` to `1.0` are usually easier to handle. The Soft Clip visual shows the
+dry line and the `tanh`-style curve created by `softClipDrive` and blended by
+`softClipMix`. The Pitch Follow visual keeps a short history of `targetFreq`
+and `followedFreq` so lag and portamento delay can be seen while playing.
+These drawings are intentionally approximate concept diagrams, not accurate
+measurement instruments.
+
+The LPF visual also includes frequency guide marks so it is easier to see
+whether the cutoff is in the low, mid, or high range. The visualizer includes
+a simple harmonic bar display for the additive source and a conceptual delay
+display for delay time and feedback.
+
+A separate `Probe Synth Additive / FX Controls` window exposes additional
+probe-level sound design controls. The additive source is an organ-style
+12-harmonic oscillator: each harmonic can be controlled independently, the
+harmonic sum is normalized, and the result is blended with the base sine
+source before soft clipping and the main filter. A filtered delay is placed
+after the main filter, and reverb is placed after the delay. These are still
+probe synth tone-shaping tools, not a finished instrument or effects spec.
 
 The design boundary stays the same: Python decides pitch, scale,
 quantization, octave candidates, and `final_freq`. SuperCollider receives that
