@@ -145,6 +145,15 @@ Output / amp range:
 
 softClipやfilterを調整するときの目安として使ってください。Python側のOSCアドレスや起動コマンドは変わりません。
 
+`Probe Synth Visualizer` には、音作り用の概念図も表示されます。
+
+- LPFの図で、どの周波数から高域を削っているかを見られます。
+- filterCutoff、filterRq、filterMix の変化が、ざっくりしたフィルター形状として反映されます。
+- softClipの図で、driveによる波形の潰れ方とmixによるdryへの戻り方を見られます。
+- pitch followの図で、`targetFreq` と `followedFreq` のズレや追従の遅れを見られます。
+
+これらは正確な測定器ではなく、probe synth の音作りを直感的に進めるための目安です。
+
 ## よくあるトラブル
 
 音が出ない:

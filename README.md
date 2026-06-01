@@ -126,6 +126,8 @@ python main.py hands --sample-mapping --send-osc --show-pitch-guides --show-sett
 - The SuperCollider probe opens a small sound-design monitor panel. It shows
   target/followed frequency, target/followed amp, gate envelope, output level,
   softClip, and filter state, with buttons for waveform and frequency scopes.
+- The SuperCollider probe also opens a conceptual visualizer for sound design:
+  LPF/filter shape, soft clip curve, and pitch-follow / portamento history.
 - A minimal sample pitch guide-line overlay is available in the camera preview.
   It supports `simple`, `chromatic`, and `scale` display modes from the same
   Python pitch range settings used by the sample mapper.
@@ -287,6 +289,15 @@ The monitor includes `Open Scope`, which calls `s.scope(2)` for the final
 2-channel output waveform, and `Open FreqScope`, which opens SuperCollider's
 standard frequency display. These are meant to make soft clipping and filter
 changes easier to judge while shaping the probe synth.
+
+A separate `Probe Synth Visualizer` window shows three conceptual diagrams for
+sound design. The LPF visual places `filterCutoff` on a log-like frequency
+axis and shows how `filterRq` and `filterMix` affect the rough filter shape.
+The Soft Clip visual shows the dry line and the `tanh`-style curve created by
+`softClipDrive` and blended by `softClipMix`. The Pitch Follow visual keeps a
+short history of `targetFreq` and `followedFreq` so lag and portamento delay
+can be seen while playing. These drawings are intentionally approximate
+concept diagrams, not accurate measurement instruments.
 
 The design boundary stays the same: Python decides pitch, scale,
 quantization, octave candidates, and `final_freq`. SuperCollider receives that
