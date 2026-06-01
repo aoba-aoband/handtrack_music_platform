@@ -72,6 +72,8 @@ def run_hands_smoke_test(
     pitch_guide_scale,
     show_settings_panel,
     send_osc,
+    show_performance_stats,
+    performance_stats_interval,
     sample_mapping_config=None,
 ):
     """Show webcam video with MediaPipe hand landmarks until q is pressed."""
@@ -108,6 +110,8 @@ def run_hands_smoke_test(
             show_settings_panel=show_settings_panel,
             sample_mapping_config=sample_mapping_config,
             event_sink=event_sink,
+            show_performance_stats=show_performance_stats,
+            performance_stats_interval=performance_stats_interval,
         ).run()
     finally:
         if output is not None:
@@ -210,6 +214,21 @@ def parse_args():
         action="store_true",
         help="Send generated ControlEvents over OSC in hands mode.",
     )
+    parser.add_argument(
+        "--show-performance-stats",
+        action="store_true",
+        help=(
+            "Print periodic hands-mode timing stats for capture, MediaPipe, "
+            "feature extraction, mapping, OSC, drawing, display, and total "
+            "frame time."
+        ),
+    )
+    parser.add_argument(
+        "--performance-stats-interval",
+        type=float,
+        default=1.0,
+        help="Seconds between performance stats summaries. Defaults to 1.0.",
+    )
     return parser.parse_args()
 
 
@@ -251,6 +270,8 @@ def main():
             args.pitch_guide_scale,
             args.show_settings_panel,
             args.send_osc,
+            args.show_performance_stats,
+            args.performance_stats_interval,
             build_sample_mapping_config(args),
         )
         return

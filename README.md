@@ -62,6 +62,18 @@ Start with pitch quantization enabled:
 python main.py hands --sample-mapping --send-osc --show-pitch-guides --show-settings-panel --quantize-pitch
 ```
 
+Measure current frame timing before making low-latency behavior changes:
+
+```powershell
+python main.py hands --sample-mapping --send-osc --show-pitch-guides --show-settings-panel --show-performance-stats
+```
+
+`--show-performance-stats` prints periodic console summaries for capture,
+MediaPipe inference, feature extraction, mapping, OSC send time, drawing,
+display/wait time, total frame time, and effective FPS. It is measurement only:
+it does not enable a low-latency mode, skip drawing, drop frames, change OSC
+addresses, or otherwise change the hand-tracking behavior.
+
 ## Basic Operation
 
 - Press `q` in the preview window to quit.
@@ -237,6 +249,15 @@ Use another camera:
 ```powershell
 python main.py hands --camera-index 1
 ```
+
+Show periodic performance stats while running the normal sample mapping patch:
+
+```powershell
+python main.py hands --sample-mapping --send-osc --show-pitch-guides --show-settings-panel --show-performance-stats
+```
+
+The reporting interval can be changed with `--performance-stats-interval`,
+for example `--performance-stats-interval 2.0`.
 
 ## SuperCollider Probe
 

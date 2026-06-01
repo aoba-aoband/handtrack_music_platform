@@ -37,6 +37,88 @@ HANDEDNESS_STABLE_FRAMES = 3
 SETTINGS_PANEL_WINDOW = "Pitch Settings"
 SETTINGS_MIDI_MIN = 45
 SETTINGS_MIDI_MAX = 84
+PERFORMANCE_TIMING_KEYS = (
+    "camera_capture_ms",
+    "mediapipe_ms",
+    "feature_ms",
+    "mapping_ms",
+    "osc_send_ms",
+    "drawing_ms",
+    "display_wait_ms",
+    "total_frame_ms",
+)
+
+
+class PerformanceStats:
+    """Collect and print lightweight frame timing summaries."""
+
+    def __init__(self, interval_seconds=1.0, osc_enabled=False):
+        self.interval_seconds = max(0.1, float(interval_seconds or 1.0))
+        self.osc_enabled = osc_enabled
+        self.reset(time.perf_counter())
+
+    def reset(self, started_at):
+        """Reset the current reporting interval."""
+        self.started_at = started_at
+        self.frame_count = 0
+        self.totals = {key: 0.0 for key in PERFORMANCE_TIMING_KEYS}
+        self.maxes = {key: 0.0 for key in PERFORMANCE_TIMING_KEYS}
+        self.events_sent = 0
+        self.hands_detected = 0
+
+    def record_frame(self, timings, hands_detected=0, events_sent=0):
+        """Add one frame's timings and print a summary when due."""
+        now = time.perf_counter()
+        self.frame_count += 1
+        self.events_sent += events_sent
+        self.hands_detected += hands_detected
+
+        for key in PERFORMANCE_TIMING_KEYS:
+            value = float(timings.get(key, 0.0))
+            self.totals[key] += value
+            self.maxes[key] = max(self.maxes[key], value)
+
+        elapsed = now - self.started_at
+        if elapsed >= self.interval_seconds:
+            self.print_summary(elapsed)
+            self.reset(now)
+
+    def avg(self, key):
+        """Return an average value for the active interval."""
+        if self.frame_count <= 0:
+            return 0.0
+        return self.totals[key] / self.frame_count
+
+    def print_summary(self, elapsed):
+        """Print one compact performance line."""
+        fps = self.frame_count / max(elapsed, 0.0001)
+        osc_text = (
+            f"{self.avg('osc_send_ms'):.2f}"
+            if self.osc_enabled
+            else "skipped"
+        )
+        hands_avg = self.hands_detected / max(self.frame_count, 1)
+        message = (
+            "[perf] "
+            f"fps={fps:.1f} "
+            "avg_ms "
+            f"total={self.avg('total_frame_ms'):.2f} "
+            f"capture={self.avg('camera_capture_ms'):.2f} "
+            f"mediapipe={self.avg('mediapipe_ms'):.2f} "
+            f"feature={self.avg('feature_ms'):.2f} "
+            f"mapping={self.avg('mapping_ms'):.2f} "
+            f"osc={osc_text} "
+            f"drawing={self.avg('drawing_ms'):.2f} "
+            f"display={self.avg('display_wait_ms'):.2f} "
+            "max_ms "
+            f"total={self.maxes['total_frame_ms']:.2f} "
+            f"mediapipe={self.maxes['mediapipe_ms']:.2f} "
+            f"drawing={self.maxes['drawing_ms']:.2f} "
+            f"display={self.maxes['display_wait_ms']:.2f} "
+            f"events={self.events_sent} "
+            f"hands={hands_avg:.1f}"
+        )
+        print(message, flush=True)
 
 
 class HandednessStabilizer:
@@ -185,6 +267,8 @@ class MediaPipeHandsSmokeTest:
         show_settings_panel=False,
         sample_mapping_config=None,
         event_sink=None,
+        show_performance_stats=False,
+        performance_stats_interval=1.0,
     ):
         self.camera_index = camera_index
         self.window_name = window_name
@@ -200,6 +284,14 @@ class MediaPipeHandsSmokeTest:
         self.show_settings_panel = show_settings_panel
         self.sample_mapping_config = dict(sample_mapping_config or {})
         self.event_sink = event_sink
+        self.performance_stats = (
+            PerformanceStats(
+                interval_seconds=performance_stats_interval,
+                osc_enabled=event_sink is not None,
+            )
+            if show_performance_stats
+            else None
+        )
         self.capture = None
         self.landmarker = None
         self.settings_panel_started = False
@@ -260,18 +352,30 @@ class MediaPipeHandsSmokeTest:
 
         return frame
 
-    def draw_landmarks(self, frame):
+    def draw_landmarks(self, frame, timings=None):
         """Draw detected hand landmarks and connections on a frame."""
         if self.landmarker is None:
             raise RuntimeError("MediaPipe HandLandmarker has not been started")
 
+        if timings is not None:
+            stage_started = time.perf_counter()
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
         timestamp_ms = max(int(time.monotonic() * 1000), self.last_timestamp_ms + 1)
         self.last_timestamp_ms = timestamp_ms
         results = self.landmarker.detect_for_video(mp_image, timestamp_ms)
+        if timings is not None:
+            timings["mediapipe_ms"] = (time.perf_counter() - stage_started) * 1000
+
+        if timings is not None:
+            stage_started = time.perf_counter()
         self.current_features = extract_features(results)
         self.current_sample_features = self.current_features
+        if timings is not None:
+            timings["feature_ms"] = (time.perf_counter() - stage_started) * 1000
+
+        if timings is not None:
+            stage_started = time.perf_counter()
         self.current_events = self.mapper.map(self.current_features)
         self.current_sample_events = []
         if self.sample_mapping:
@@ -282,10 +386,19 @@ class MediaPipeHandsSmokeTest:
                 self.current_sample_features
             )
         self.current_hand_labels = self.build_hand_labels(results.hand_landmarks)
+        if timings is not None:
+            timings["mapping_ms"] = (time.perf_counter() - stage_started) * 1000
+
         output_events = self.current_events + self.current_sample_events
+        if timings is not None:
+            stage_started = time.perf_counter()
         if self.event_sink is not None and output_events:
             self.event_sink(output_events)
+        if timings is not None:
+            timings["osc_send_ms"] = (time.perf_counter() - stage_started) * 1000
 
+        if timings is not None:
+            stage_started = time.perf_counter()
         if results.hand_landmarks:
             for hand_landmarks in results.hand_landmarks:
                 vision.drawing_utils.draw_landmarks(
@@ -295,6 +408,10 @@ class MediaPipeHandsSmokeTest:
                     vision.drawing_styles.get_default_hand_landmarks_style(),
                     vision.drawing_styles.get_default_hand_connections_style(),
                 )
+        if timings is not None:
+            timings["drawing_ms"] = timings.get("drawing_ms", 0.0) + (
+                (time.perf_counter() - stage_started) * 1000
+            )
 
         return frame
 
@@ -693,17 +810,54 @@ class MediaPipeHandsSmokeTest:
         self.start()
         try:
             while True:
+                stats = self.performance_stats
+                timings = {} if stats is not None else None
+                if timings is not None:
+                    frame_started = time.perf_counter()
+                    stage_started = frame_started
                 frame = self.read()
+                if timings is not None:
+                    timings["camera_capture_ms"] = (
+                        time.perf_counter() - stage_started
+                    ) * 1000
                 self.update_settings_from_panel()
-                frame = self.draw_landmarks(frame)
+                frame = self.draw_landmarks(frame, timings=timings)
+
+                if timings is not None:
+                    stage_started = time.perf_counter()
                 display_frame = cv2.flip(frame, 1)
                 display_frame = self.draw_pitch_guides(display_frame)
                 display_frame = self.draw_settings_overlay(display_frame)
                 display_frame = self.draw_status_overlay(display_frame)
                 display_frame = self.draw_hand_labels(display_frame)
-                cv2.imshow(self.window_name, display_frame)
+                if timings is not None:
+                    timings["drawing_ms"] = timings.get("drawing_ms", 0.0) + (
+                        (time.perf_counter() - stage_started) * 1000
+                    )
 
-                if cv2.waitKey(1) & 0xFF == ord("q"):
+                if timings is not None:
+                    stage_started = time.perf_counter()
+                cv2.imshow(self.window_name, display_frame)
+                key = cv2.waitKey(1)
+                if timings is not None:
+                    timings["display_wait_ms"] = (
+                        time.perf_counter() - stage_started
+                    ) * 1000
+                    timings["total_frame_ms"] = (
+                        time.perf_counter() - frame_started
+                    ) * 1000
+                    events_sent = (
+                        len(self.current_events) + len(self.current_sample_events)
+                        if self.event_sink is not None
+                        else 0
+                    )
+                    stats.record_frame(
+                        timings,
+                        hands_detected=len(self.current_features),
+                        events_sent=events_sent,
+                    )
+
+                if key & 0xFF == ord("q"):
                     break
         finally:
             self.stop()

@@ -71,6 +71,16 @@ python main.py hands --sample-mapping --send-osc --show-pitch-guides --show-sett
 python main.py hands --sample-mapping --send-osc --show-pitch-guides --show-settings-panel --quantize-pitch
 ```
 
+現在の処理時間を測りたい場合:
+
+```powershell
+python main.py hands --sample-mapping --send-osc --show-pitch-guides --show-settings-panel --show-performance-stats
+```
+
+`--show-performance-stats` は、低遅延化そのものではなく、どこで時間がかかっているかを測るための表示です。
+capture、MediaPipe推論、features生成、mapping、OSC送信、描画、display/wait、total frame time、実効FPSを
+1秒ごとにコンソールへまとめて表示します。OSCアドレスや手の認識、描画、送信頻度は変更しません。
+
 起動すると、カメラpreviewと `Pitch Settings` window が開きます。
 
 - `q` で終了します。
@@ -216,11 +226,15 @@ SC側でスペースバーが効かない:
 - filterMixでdry/filterの混ざり方が変わる。
 - softClip + filterの組み合わせで、歪ませた音を丸められる。
 
-## 次に分けたい低遅延化
+## 低遅延化の前に測る
 
-低遅延計測や `--low-latency` はまだ未実装です。次のような別作業として分けるのがよさそうです。
+`--show-performance-stats` で、現在の camera capture / MediaPipe / mapping / OSC / drawing / display の
+処理時間を確認できます。表示間隔は `--performance-stats-interval 2.0` のように変更できます。
+
+これは計測だけの機能で、`--low-latency` はまだ未実装です。Capture thread、最新フレーム1枚方式、
+OpenCV描画停止、OSC送信間引きなどの挙動変更は、次の別作業として分けるのがよさそうです。
 
 ```text
-次は Python側の --show-performance-stats と --low-latency を追加してください。
+次は Python側の --low-latency を追加してください。
 sc/basic_receiver.scd は変更しないでください。
 ```
