@@ -259,6 +259,46 @@ python main.py hands --sample-mapping --send-osc --show-pitch-guides --show-sett
 The reporting interval can be changed with `--performance-stats-interval`,
 for example `--performance-stats-interval 2.0`.
 
+## Performance Log Visualization
+
+Performance stats can be saved to a log file and converted into CSV and charts
+with `tools/plot_perf_log.py`. This is useful for comparing the current
+pipeline before and after future low-latency work.
+
+Record a performance log:
+
+```powershell
+$ts = Get-Date -Format "yyyyMMdd_HHmmss"
+python main.py hands --sample-mapping --send-osc --show-pitch-guides --show-settings-panel --show-performance-stats *>&1 | Tee-Object -FilePath "logs\perf_$ts.txt"
+```
+
+Plot a specific log:
+
+```powershell
+python .\tools\plot_perf_log.py .\logs\perf_YYYYMMDD_HHMMSS.txt --out-dir .\analysis\perf_YYYYMMDD_HHMMSS
+```
+
+Generated outputs:
+
+- `perf_summary.csv`
+- `total_frame_time.png`
+- `fps_over_time.png`
+- `stage_timings_over_time.png`
+- `average_stage_breakdown.png`
+- `max_stage_breakdown.png`
+- `hands_vs_mediapipe.png`
+
+Suggested reading order:
+
+- `average_stage_breakdown.png`
+- `stage_timings_over_time.png`
+- `total_frame_time.png`
+- `fps_over_time.png`
+- `hands_vs_mediapipe.png`
+
+`logs/` and `analysis/` are generated-output directories ignored by Git. Do
+not commit performance logs, CSV files, or generated charts.
+
 ## SuperCollider Probe
 
 Evaluate `sc/basic_receiver.scd` in SuperCollider before running a Python OSC

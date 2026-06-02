@@ -11,3 +11,6 @@ __pycache__/
 
 logs/
 analysis/
+
+# Local distribution archives
+handtrack_music_platform_current.zip

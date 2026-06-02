@@ -231,6 +231,43 @@ SC側でスペースバーが効かない:
 `--show-performance-stats` で、現在の camera capture / MediaPipe / mapping / OSC / drawing / display の
 処理時間を確認できます。表示間隔は `--performance-stats-interval 2.0` のように変更できます。
 
+`--show-performance-stats` の出力は `logs/` に保存し、`tools/plot_perf_log.py` でCSVとPNGグラフに変換できます。
+平均処理時間だけでなく、折れ線グラフで時間変化も見られるので、低遅延化前後の比較に使えます。
+
+performance logを保存する例:
+
+```powershell
+$ts = Get-Date -Format "yyyyMMdd_HHmmss"
+python main.py hands --sample-mapping --send-osc --show-pitch-guides --show-settings-panel --show-performance-stats *>&1 | Tee-Object -FilePath "logs\perf_$ts.txt"
+```
+
+特定のログをCSVとグラフに変換する例:
+
+```powershell
+python .\tools\plot_perf_log.py .\logs\perf_YYYYMMDD_HHMMSS.txt --out-dir .\analysis\perf_YYYYMMDD_HHMMSS
+```
+
+生成されるファイル:
+
+- `perf_summary.csv`
+- `total_frame_time.png`
+- `fps_over_time.png`
+- `stage_timings_over_time.png`
+- `average_stage_breakdown.png`
+- `max_stage_breakdown.png`
+- `hands_vs_mediapipe.png`
+
+おすすめの見る順番:
+
+- `average_stage_breakdown.png`
+- `stage_timings_over_time.png`
+- `total_frame_time.png`
+- `fps_over_time.png`
+- `hands_vs_mediapipe.png`
+
+`logs/` と `analysis/` は生成物用ディレクトリで、Gitのignore対象です。
+performance log、CSV、PNGグラフはGitに入れないでください。
+
 これは計測だけの機能で、`--low-latency` はまだ未実装です。Capture thread、最新フレーム1枚方式、
 OpenCV描画停止、OSC送信間引きなどの挙動変更は、次の別作業として分けるのがよさそうです。
 
