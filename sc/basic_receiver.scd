@@ -12,7 +12,22 @@ Coordinate notes:
 */
 
 (
+var basicProbeInstance;
+
+// A probe owns the sample-mapping OSC handlers while it is active.  Keep this
+// small shared cleanup hook so evaluating another probe does not double-play.
+~activeProbeCleanup.notNil.if({
+    ~activeProbeCleanup.();
+});
+~activeProbeCleanup = nil;
+// Also invalidate a subtractive evaluation that may still be waiting for the
+// server to boot before it creates its Synth or windows.
+~subtractiveProbeInstance = (~subtractiveProbeInstance ? 0) + 1;
+basicProbeInstance = (~basicProbeInstance ? 0) + 1;
+~basicProbeInstance = basicProbeInstance;
+
 s.waitForBoot({
+    (~basicProbeInstance == basicProbeInstance).if({
     ~debugHandEvents = false;
     ~debugSampleEvents = false;
     ~debugProbeMonitor = false;
@@ -836,6 +851,7 @@ s.waitForBoot({
     };
 
     {
+        (~basicProbeInstance == basicProbeInstance).if({
         ~probeWindow.notNil.if({
             ~probeWindow.close;
         });
@@ -1070,6 +1086,7 @@ s.waitForBoot({
         );
         ~refreshProbeVisuals.();
         ~probeVisualizerWindow.front;
+        });
     }.defer;
 
     OSCdef(\basicOscProbeMonitor, { |msg, time, addr, recvPort|
@@ -1209,6 +1226,70 @@ s.waitForBoot({
         });
     }, "/sample/left/pinch");
 
+    // Shared, intentionally small probe-switch protocol.  It is safe to call
+    // more than once and leaves this receiver ready to be evaluated again.
+    ~activeProbeCleanup = {
+        var windows, oscdefKeys;
+        ~basicProbeInstance = (~basicProbeInstance ? 0) + 1;
+        ~basicReceiverSynth.notNil.if({
+            ~basicReceiverSynth.free;
+        });
+        ~basicReceiverSynth = nil;
+
+        oscdefKeys = [
+            \basicOscProbeMonitor,
+            \handIndexX,
+            \handIndexY,
+            \handThumbX,
+            \handThumbY,
+            \handPinch,
+            \sampleRightIndexYInverted,
+            \sampleRightPitchFreq,
+            \sampleRightPitchOctaveShift,
+            \sampleRightPitchFreqWithOctave,
+            \sampleRightPitchQuantizedFreq,
+            \sampleRightPitchFinalFreq,
+            \sampleLeftPinch
+        ];
+        oscdefKeys.do({ |key|
+            try {
+                OSCdef(key).free;
+            } { |error| };
+        });
+
+        windows = [
+            ~probeWindow,
+            ~probeFxWindow,
+            ~probeMonitorWindow,
+            ~probeVisualizerWindow
+        ];
+        windows.do({ |window|
+            window.notNil.if({
+                try {
+                    window.close;
+                } { |error| };
+            });
+        });
+        ~probeWindow = nil;
+        ~probeFxWindow = nil;
+        ~probeMonitorWindow = nil;
+        ~probeVisualizerWindow = nil;
+        ~probeFreqScope.notNil.if({
+            try {
+                ~probeFreqScope.kill;
+            } { |error| };
+        });
+        ~probeFreqScope = nil;
+        ~probeControls = nil;
+        ~probeMonitorLabels = nil;
+        ~probeVisualLabels = nil;
+        ~probeVisualViews = nil;
+        (~activeProbeName == \basicReceiver).if({
+            ~activeProbeName = nil;
+        });
+    };
+    ~activeProbeName = \basicReceiver;
+
     "Listening for generic hand control events on port 57120".postln;
     "Listening for sample mapping events that control the probe synth.".postln;
     "Probe synth controls are available in the SuperCollider UI window.".postln;
@@ -1216,5 +1297,6 @@ s.waitForBoot({
     "Probe synth monitor is available with Scope and FreqScope buttons.".postln;
     "Probe synth visualizer is available for conceptual tone-shaping diagrams.".postln;
     "Set ~debugHandEvents or ~debugSampleEvents to true for per-event logs.".postln;
+    });
 });
 )

@@ -43,7 +43,9 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ## SuperCollider Setup
 
 1. Start SuperCollider.
-2. Open `sc/basic_receiver.scd`.
+2. Choose one probe: `sc/basic_receiver.scd` for the existing additive / FX
+   probe, or `sc/subtractive_probe.scd` for the separate subtractive-synthesis
+   probe.
 3. Evaluate the block in that file.
 4. The receiver listens for OSC on `127.0.0.1:57120`.
 5. That host and port should match the SuperCollider target in `config.py`.
@@ -405,6 +407,65 @@ The current filter uses `RLPF.ar` to tame high-frequency content created by
 soft clipping. `filterCutoff`, `filterRq`, `filterMix`, and `filterLag` are
 adjustable from the SuperCollider UI. This is a probe synth tone-shaping tool,
 not a finished sound design.
+
+### Subtractive Synthesis Probe (V1)
+
+`sc/subtractive_probe.scd` is a separate, educational and playable
+subtractive-synthesis probe. It is not an extension of `basic_receiver.scd`:
+the basic receiver remains the additive / soft-clip / delay / reverb probe,
+while the subtractive probe keeps the core `source -> filter -> amp -> output`
+structure easy to hear and inspect.
+
+To use it, evaluate `sc/subtractive_probe.scd` in SuperCollider, then run the
+existing Python command unchanged:
+
+```powershell
+python main.py hands --sample-mapping --send-osc --show-pitch-guides --show-settings-panel
+```
+
+It uses the existing sample mapping only:
+
+- `/sample/right/pitch/final_freq` updates `freq`.
+- `/sample/left/pinch` is mapped from `0..1` into `ampMin..ampMax` and updates
+  `amp`.
+
+Its signal path is:
+
+```text
+oscillators / sub / noise
+-> source mix
+-> RLPF
+-> amp response
+-> performance gate
+-> LeakDC / Limiter
+-> Out
+```
+
+The V1 controls cover oscillator 1 and a switchable oscillator 2 (Saw, Pulse,
+or Triangle), octave, detune, oscillator mix, manual pulse width, sub mix, and
+noise mix. The filter section provides cutoff, `filterRq`, dry/filter mix,
+filter lag, and key tracking. `keyTracking = 0` leaves cutoff fixed; higher
+values raise the effective cutoff for higher pitches so their relative
+brightness is easier to retain. Response controls provide `freqLag`, separate
+`ampAttack` / `ampRelease`, `outputLevel`, and the pinch amp range.
+
+The `Subtractive Probe Controls` window has a Gate button; with that window
+focused, the spacebar performs the same performance-gate toggle. Its monitor
+shows target/followed frequency and amp, gate envelope, effective cutoff,
+filter state, oscillator waveforms, and output level, with Scope and FreqScope
+buttons for final-output inspection. `Reset defaults` updates the GUI and the
+running Synth together.
+
+Evaluate one probe at a time. Both probe files use a small shared cleanup hook:
+evaluating either file frees the other probe's Synth, its sample-mapping
+OSCdefs, and its control/monitor windows, so the same OSC messages do not make
+both probes sound. Re-evaluating either individual probe also replaces its old
+Synth, OSCdefs, and windows.
+
+V1 intentionally does not add LFOs, PWM, filter envelopes, ADSR or note
+triggers, unison, alternate filter types, delay/reverb, a custom visualizer,
+or new Python gestures / OSC addresses. Those are candidates for a later
+instrument-focused pass.
 
 This sample uses MediaPipe `handedness`, but it is still an example patch, not
 a platform rule. The sample mapping debounces handedness labels for a few
