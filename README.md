@@ -467,6 +467,32 @@ triggers, unison, alternate filter types, delay/reverb, a custom visualizer,
 or new Python gestures / OSC addresses. Those are candidates for a later
 instrument-focused pass.
 
+### V1.5: Left-Hand Tone Control
+
+V1.5 adds one sample-mapping event without changing the existing Python launch
+command:
+
+```powershell
+python main.py hands --sample-mapping --send-osc --show-pitch-guides --show-settings-panel
+```
+
+`/sample/left/tone/norm` carries the left index-tip X position as an unchanged
+`0..1` tone candidate. Python does not invert it, convert it to Hz, or smooth
+it. `sc/subtractive_probe.scd` interprets it as cutoff control; the existing
+`sc/basic_receiver.scd` deliberately does not use this new event.
+
+With `handToneOn` OFF, the V1 `Manual cutoff` (`filterCutoff`) remains the
+selected base cutoff. With it ON, SuperCollider optionally inverts the tone
+norm with `toneInvert`, maps it exponentially into the
+`toneMinCutoff..toneMaxCutoff` range, and uses the resulting
+`handToneCutoff` as the base cutoff. The selected base cutoff is then adjusted
+by `keyTracking` and smoothed by `filterLag` before reaching `RLPF`.
+
+`toneMinCutoff` and `toneMaxCutoff` define the dark-to-bright playing range;
+the UI keeps their order valid. `toneInvert` reverses which left-hand direction
+means darker or brighter. The subtractive monitor shows the mode, raw target
+tone norm, mapped hand-tone cutoff, manual cutoff, and effective cutoff.
+
 This sample uses MediaPipe `handedness`, but it is still an example patch, not
 a platform rule. The sample mapping debounces handedness labels for a few
 frames so a single-frame Left/Right misclassification is less likely to swap

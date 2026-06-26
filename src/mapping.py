@@ -241,11 +241,21 @@ def map_sample_musical_features(features, hand_index=0, mapping_config=None):
         ]
 
     if handedness == "left":
+        tone_norm = max(0.0, min(1.0, features.index_tip_x))
         return [
             ControlEvent(
                 "/sample/left/pinch",
                 features.pinch,
                 {**metadata, "feature": "pinch", "role": "amp_candidate"},
+            ),
+            ControlEvent(
+                "/sample/left/tone/norm",
+                tone_norm,
+                {
+                    **metadata,
+                    "feature": "index_tip_x",
+                    "role": "tone_candidate",
+                },
             ),
         ]
 

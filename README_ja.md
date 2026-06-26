@@ -240,6 +240,30 @@ V1では LFO、PWM、filter envelope、ADSR、note-on / note-off、pinch thresho
 unison、HPF / BPF、delay、reverb、custom visualizer、新しい Python gesture / OSC
 address は実装していません。これらは次段階の候補です。
 
+## V1.5: 左手横位置による Tone Control
+
+V1.5 では既存の Python 起動コマンドを変えずに、左手 index tip X 由来の
+`/sample/left/tone/norm`（`0..1`）を追加しました。
+
+```powershell
+python main.py hands --sample-mapping --send-osc --show-pitch-guides --show-settings-panel
+```
+
+Python 側は X 方向を反転せず、Hz への変換や smoothing もせず、neutral-ish な tone
+candidate を送るだけです。`sc/subtractive_probe.scd` がこれを RLPF cutoff として
+解釈します。`sc/basic_receiver.scd` はこの新しい OSC を使用しません。
+
+`handToneOn` が OFF のときは、V1 と同じ手動 `Manual cutoff`（`filterCutoff`）を
+使います。ON のときは `toneInvert` で方向を必要に応じて反転し、
+`toneMinCutoff..toneMaxCutoff` の指数スケールへ変換した `handToneCutoff` を
+base cutoff として使います。その後に `keyTracking`、両方の cutoff に共通の
+`filterLag` が適用されて RLPF へ入ります。
+
+`toneMinCutoff` / `toneMaxCutoff` は暗さ〜明るさの演奏レンジで、UI は min/max の
+逆転を防ぎます。`toneInvert` は左手の左右方向と bright/dark の対応を反転します。
+Subtractive Probe Monitor では mode、target tone norm、mapped hand tone cutoff、
+manual cutoff、effective cutoff を確認できます。
+
 ## よくあるトラブル
 
 音が出ない:

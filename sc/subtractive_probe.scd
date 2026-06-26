@@ -49,6 +49,11 @@ s.waitForBoot({
             filterMix: 1.0,
             filterLag: 0.08,
             keyTracking: 0.35,
+            handToneOn: 0,
+            toneMinCutoff: 160,
+            toneMaxCutoff: 8000,
+            toneInvert: 0,
+            handToneCutoff: 2400,
             monitorOn: 1,
             monitorRate: 8
         );
@@ -76,6 +81,8 @@ s.waitForBoot({
             \filterMix,
             \filterLag,
             \keyTracking,
+            \handToneOn,
+            \handToneCutoff,
             \monitorOn,
             \monitorRate
         ];
@@ -85,6 +92,9 @@ s.waitForBoot({
             followedFreq: 440.0,
             followedAmp: 0.05,
             performanceEnv: 0.0,
+            targetToneNorm: 0.0,
+            mappedHandToneCutoff: 2400.0,
+            manualFilterCutoff: 2400.0,
             effectiveCutoff: 2400.0
         );
 
@@ -97,12 +107,14 @@ s.waitForBoot({
             subMix = 0, noiseMix = 0,
             filterOn = 1, filterCutoff = 2400, filterRq = 0.7,
             filterMix = 1, filterLag = 0.08, keyTracking = 0.35,
+            handToneOn = 0, handToneCutoff = 2400,
             monitorOn = 1, monitorRate = 8|
 
             var followedFreq, followedAmp, performanceEnv;
             var width, osc1, osc2Freq, osc2, osc2Blend, oscillatorMix;
             var sub, noise, sourceMix, sourceDenom;
-            var trackedCutoff, effectiveCutoff, filtered, filterBlend, postFilter;
+            var baseCutoff, trackedCutoff, effectiveCutoff;
+            var filtered, filterBlend, postFilter;
             var afterAmp, afterGate, sig, monitorTrig;
 
             followedFreq = Lag.kr(freq.clip(20, 20000), freqLag.max(0));
@@ -146,9 +158,15 @@ s.waitForBoot({
                 + (noise * noiseMix.clip(0, 1))
             ) / sourceDenom;
 
-            // keyTracking raises cutoff for higher notes so their relative
-            // brightness can stay more consistent.  At 0 it is fixed.
-            trackedCutoff = filterCutoff.clip(40, 16000)
+            // handToneOn selects either the V1 manual cutoff or the cutoff
+            // mapped from left-hand tone norm before keyTracking is applied.
+            baseCutoff = Select.kr(handToneOn.clip(0, 1), [
+                filterCutoff.clip(40, 16000),
+                handToneCutoff.clip(40, 16000)
+            ]);
+            // keyTracking raises the selected base cutoff for higher notes so
+            // their relative brightness can stay more consistent. At 0 it is fixed.
+            trackedCutoff = baseCutoff
                 * ((followedFreq / 440).clip(0.125, 8) ** keyTracking.clip(0, 1));
             effectiveCutoff = Lag.kr(
                 trackedCutoff.clip(40, 16000),
@@ -211,6 +229,8 @@ s.waitForBoot({
             \filterMix, ~subtractiveParams[\filterMix],
             \filterLag, ~subtractiveParams[\filterLag],
             \keyTracking, ~subtractiveParams[\keyTracking],
+            \handToneOn, ~subtractiveParams[\handToneOn],
+            \handToneCutoff, ~subtractiveParams[\handToneCutoff],
             \monitorOn, ~subtractiveParams[\monitorOn],
             \monitorRate, ~subtractiveParams[\monitorRate]
         ]);
@@ -257,11 +277,23 @@ s.waitForBoot({
                 });
                 labels[\filter].notNil.if({
                     labels[\filter].string_(
-                        "effective cutoff: "
+                        "manualFilterCutoff: "
+                        ++ ~fmtSubtractiveHz.(~subtractiveMonitor[\manualFilterCutoff])
+                        ++ "    effectiveCutoff: "
                         ++ ~fmtSubtractiveHz.(~subtractiveMonitor[\effectiveCutoff])
                         ++ "    filter " ++ ~fmtSubtractiveOnOff.(~subtractiveParams[\filterOn])
                         ++ "    mix "
                         ++ ~fmtSubtractiveNumber.(~subtractiveParams[\filterMix])
+                    );
+                });
+                labels[\handTone].notNil.if({
+                    labels[\handTone].string_(
+                        "handToneOn: "
+                        ++ ~fmtSubtractiveOnOff.(~subtractiveParams[\handToneOn])
+                        ++ "    targetToneNorm: "
+                        ++ ~fmtSubtractiveNumber.(~subtractiveMonitor[\targetToneNorm])
+                        ++ "    mappedHandToneCutoff: "
+                        ++ ~fmtSubtractiveHz.(~subtractiveMonitor[\mappedHandToneCutoff])
                     );
                 });
                 labels[\oscillators].notNil.if({
@@ -291,12 +323,75 @@ s.waitForBoot({
 
         ~setSubtractiveParam = { |key, value|
             ~subtractiveParams[key] = value;
+            (key == \filterCutoff).if({
+                ~subtractiveMonitor[\manualFilterCutoff] = value.asFloat.clip(40, 16000);
+            });
+            (key == \handToneCutoff).if({
+                ~subtractiveMonitor[\mappedHandToneCutoff] = value.asFloat.clip(40, 16000);
+            });
             (~subtractiveSynth.notNil and: {
                 ~subtractiveSynthParamKeys.includes(key)
             }).if({
                 ~subtractiveSynth.set(key, value);
             });
             ~updateSubtractiveMonitor.();
+        };
+
+        ~updateSubtractiveHandToneCutoff = { |rawToneNorm|
+            var toneNorm, mappedNorm, firstCutoff, secondCutoff;
+            var minCutoff, maxCutoff, cutoff;
+            toneNorm = rawToneNorm.asFloat.clip(0, 1);
+            firstCutoff = (~subtractiveParams[\toneMinCutoff] ? 160).asFloat.clip(40, 16000);
+            secondCutoff = (~subtractiveParams[\toneMaxCutoff] ? 8000).asFloat.clip(40, 16000);
+            minCutoff = firstCutoff.min(secondCutoff);
+            maxCutoff = firstCutoff.max(secondCutoff);
+            mappedNorm = ((~subtractiveParams[\toneInvert] ? 0).asFloat >= 0.5).if({
+                1.0 - toneNorm;
+            }, {
+                toneNorm;
+            });
+            cutoff = (minCutoff == maxCutoff).if({
+                minCutoff;
+            }, {
+                mappedNorm.linexp(0, 1, minCutoff, maxCutoff);
+            }).clip(40, 16000);
+            ~subtractiveMonitor[\targetToneNorm] = toneNorm;
+            ~setSubtractiveParam.(\handToneCutoff, cutoff);
+        };
+
+        ~setSubtractiveToneRange = { |key, value|
+            var minCutoff, maxCutoff;
+            minCutoff = (~subtractiveParams[\toneMinCutoff] ? 160).asFloat.clip(40, 16000);
+            maxCutoff = (~subtractiveParams[\toneMaxCutoff] ? 8000).asFloat.clip(40, 16000);
+            (key == \toneMinCutoff).if({
+                minCutoff = value.asFloat.clip(40, 16000);
+                (minCutoff > maxCutoff).if({
+                    maxCutoff = minCutoff;
+                });
+            }, {
+                maxCutoff = value.asFloat.clip(40, 16000);
+                (maxCutoff < minCutoff).if({
+                    minCutoff = maxCutoff;
+                });
+            });
+            ~setSubtractiveParam.(\toneMinCutoff, minCutoff);
+            ~setSubtractiveParam.(\toneMaxCutoff, maxCutoff);
+            {
+                ~subtractiveControls.notNil.if({
+                    ~subtractiveControls[\toneMinCutoff].notNil.if({
+                        ~subtractiveControls[\toneMinCutoff].value_(minCutoff);
+                    });
+                    ~subtractiveControls[\toneMaxCutoff].notNil.if({
+                        ~subtractiveControls[\toneMaxCutoff].value_(maxCutoff);
+                    });
+                });
+            }.defer;
+            ~updateSubtractiveHandToneCutoff.(~subtractiveMonitor[\targetToneNorm] ? 0);
+        };
+
+        ~setSubtractiveToneInvert = { |value|
+            ~setSubtractiveParam.(\toneInvert, value.clip(0, 1).asInteger);
+            ~updateSubtractiveHandToneCutoff.(~subtractiveMonitor[\targetToneNorm] ? 0);
         };
 
         ~setSubtractivePerformanceGate = { |value|
@@ -322,6 +417,9 @@ s.waitForBoot({
             ~subtractiveDefaults.keysValuesDo({ |key, value|
                 ~setSubtractiveParam.(key, value);
             });
+            ~subtractiveMonitor[\targetToneNorm] = 0.0;
+            ~subtractiveMonitor[\mappedHandToneCutoff] = ~subtractiveDefaults[\handToneCutoff];
+            ~subtractiveMonitor[\manualFilterCutoff] = ~subtractiveDefaults[\filterCutoff];
             {
                 ~subtractiveControls.notNil.if({
                     ~subtractiveControls.keysValuesDo({ |key, control|
@@ -362,7 +460,7 @@ s.waitForBoot({
                 ~subtractiveMonitorLabels = nil;
                 ~subtractiveWindow = Window(
                     "Subtractive Probe Controls",
-                    Rect(100, 80, 480, 820)
+                    Rect(100, 60, 480, 960)
                 );
                 ~subtractiveControls = ();
 
@@ -387,6 +485,26 @@ s.waitForBoot({
                     slider.view;
                 };
 
+                ~makeSubtractiveToneRangeSlider = { |label, key|
+                    var slider;
+                    slider = EZSlider(
+                        ~subtractiveWindow,
+                        450@22,
+                        label,
+                        ControlSpec(
+                            40.0,
+                            16000.0,
+                            \exp,
+                            1.0,
+                            ~subtractiveParams[key]
+                        ),
+                        { |view| ~setSubtractiveToneRange.(key, view.value); },
+                        ~subtractiveParams[key]
+                    );
+                    ~subtractiveControls[key] = slider;
+                    slider.view;
+                };
+
                 ~makeSubtractiveToggle = { |label, key|
                     var button;
                     button = Button()
@@ -397,6 +515,19 @@ s.waitForBoot({
                         .value_(~subtractiveParams[key].asInteger)
                         .action_({ |view| ~setSubtractiveParam.(key, view.value); });
                     ~subtractiveControls[key] = button;
+                    button;
+                };
+
+                ~makeSubtractiveToneInvertToggle = {
+                    var button;
+                    button = Button()
+                        .states_([
+                            ["toneInvert: OFF", Color.black, Color.gray(0.85)],
+                            ["toneInvert: ON", Color.white, Color(0.2, 0.45, 0.8)]
+                        ])
+                        .value_(~subtractiveParams[\toneInvert].asInteger)
+                        .action_({ |view| ~setSubtractiveToneInvert.(view.value); });
+                    ~subtractiveControls[\toneInvert] = button;
                     button;
                 };
 
@@ -457,12 +588,17 @@ s.waitForBoot({
                     ~makeSubtractiveSlider.("noiseMix", \noiseMix, 0.0, 0.5, 0.001),
                     StaticText().string_("Filter"),
                     ~makeSubtractiveToggle.("filterOn", \filterOn),
-                    ~makeSubtractiveSlider.("filterCutoff", \filterCutoff, 40.0, 16000.0, 1.0, \exp),
+                    ~makeSubtractiveSlider.("Manual cutoff", \filterCutoff, 40.0, 16000.0, 1.0, \exp),
                     StaticText().string_("filterRq: low rq = sharper / more resonant"),
                     ~makeSubtractiveSlider.("filterRq", \filterRq, 0.05, 1.0, 0.001),
                     ~makeSubtractiveSlider.("filterMix", \filterMix, 0.0, 1.0, 0.001),
                     ~makeSubtractiveSlider.("filterLag", \filterLag, 0.0, 0.5, 0.001),
                     ~makeSubtractiveSlider.("keyTracking", \keyTracking, 0.0, 1.0, 0.001),
+                    StaticText().string_("Hand Tone Control (left-hand X -> cutoff)"),
+                    ~makeSubtractiveToggle.("handToneOn", \handToneOn),
+                    ~makeSubtractiveToneRangeSlider.("Hand tone range min", \toneMinCutoff),
+                    ~makeSubtractiveToneRangeSlider.("Hand tone range max", \toneMaxCutoff),
+                    ~makeSubtractiveToneInvertToggle.(),
                     StaticText().string_("Utility"),
                     Button()
                         .states_([["Reset defaults", Color.black, Color.gray(0.85)]])
@@ -472,7 +608,7 @@ s.waitForBoot({
 
                 ~subtractiveMonitorWindow = Window(
                     "Subtractive Probe Monitor",
-                    Rect(610, 80, 500, 310)
+                    Rect(610, 80, 560, 340)
                 );
                 ~subtractiveMonitorLabels = ();
 
@@ -497,6 +633,7 @@ s.waitForBoot({
                     ~makeSubtractiveMonitorLabel.(\amp),
                     ~makeSubtractiveMonitorLabel.(\gate),
                     ~makeSubtractiveMonitorLabel.(\filter),
+                    ~makeSubtractiveMonitorLabel.(\handTone),
                     ~makeSubtractiveMonitorLabel.(\oscillators),
                     ~makeSubtractiveMonitorLabel.(\output)
                 );
@@ -560,6 +697,17 @@ s.waitForBoot({
             });
         }, "/sample/left/pinch");
 
+        // Left-hand index X remains a 0..1 tone candidate in Python. This
+        // probe owns inversion, exponential cutoff mapping, and filter lag.
+        OSCdef(\subtractiveProbeToneNorm, { |msg, time, addr, recvPort|
+            var toneNorm;
+            toneNorm = msg[1].asFloat.clip(0, 1);
+            ~updateSubtractiveHandToneCutoff.(toneNorm);
+            ~subtractiveDebugEvents.if({
+                ["subtractive tone norm", toneNorm, ~subtractiveParams[\handToneCutoff]].postln;
+            });
+        }, "/sample/left/tone/norm");
+
         // Shared, intentionally small probe-switch protocol.  It closes both
         // windows, frees this Synth, and unregisters only this probe's OSCdefs.
         ~activeProbeCleanup = {
@@ -573,7 +721,8 @@ s.waitForBoot({
             oscdefKeys = [
                 \subtractiveProbeMonitor,
                 \subtractiveProbeFinalFreq,
-                \subtractiveProbeLeftPinch
+                \subtractiveProbeLeftPinch,
+                \subtractiveProbeToneNorm
             ];
             oscdefKeys.do({ |key|
                 try {
